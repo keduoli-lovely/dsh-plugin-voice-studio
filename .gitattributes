@@ -1,0 +1,15 @@
+* text=auto eol=lf
+
+*.js text
+*.json text
+*.yml text
+*.md text
+*.py text
+*.svg text
+
+*.png binary
+*.ico binary
+*.wav binary
+*.mp3 binary
+*.tgz binary
+*.zip binary

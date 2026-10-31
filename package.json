@@ -1,0 +1,63 @@
+{
+  "name": "dsh-plugin-voice-studio",
+  "version": "0.2.0",
+  "description": "语音工坊：多提供商语音合成 + 参考音色库 + RVC 歌曲翻唱 + 情绪控制 + qq-bridge 语音发送（含随机语音回复）。Voice studio for DeepSeek Harness.",
+  "type": "module",
+  "main": "index.js",
+  "license": "MIT",
+  "author": "keduoli-lovely",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "tts",
+    "voice",
+    "indextts",
+    "gpt-sovits",
+    "minimax",
+    "siliconflow",
+    "rvc",
+    "song-cover",
+    "qq"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keduoli-lovely/dsh-plugin-voice-studio.git"
+  },
+  "homepage": "https://github.com/keduoli-lovely/dsh-plugin-voice-studio#readme",
+  "bugs": {
+    "url": "https://github.com/keduoli-lovely/dsh-plugin-voice-studio/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "worker",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ]
+}

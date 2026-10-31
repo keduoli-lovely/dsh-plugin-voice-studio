@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "语音工坊",
+    "description": "多提供商语音合成 + 参考音色库：本地 IndexTTS / GPT-SoVITS 与在线厂商统一入口；RVC 歌曲翻唱（MSST 或 RVC 内置分离）；支持情绪控制与 QQ 发送。"
+  }
+}

@@ -1,0 +1,15 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.tgz
+*.zip
+
+# 本地开发/测试脚本与测试音频（不属于发布包）
+tools/
+work/
+
+# 系统杂项
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log

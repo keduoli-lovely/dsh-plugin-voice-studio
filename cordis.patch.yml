@@ -1,0 +1,15 @@
+# dsh-plugin-voice-studio bundle patch.
+#
+# One host row. The host half owns settings persistence (its own
+# ~/.dsh-voice-studio/config.json), the reference-voice library, the TTS
+# providers, the RVC cover pipeline and the optional QQ delivery. The browser
+# half (declared by `dsh.client` in package.json) draws the settings page in
+# Settings -> Voice Studio.
+#
+# No dependency on other rows: every external service (IndexTTS, GPT-SoVITS,
+# MSST_WebUI, RVC, QQ bridge) is addressed by URL or path from the settings
+# page, so a missing one degrades that capability instead of breaking the row.
+
+- insert:
+    - id: voice-studio
+      name: 'dsh-plugin-voice-studio'

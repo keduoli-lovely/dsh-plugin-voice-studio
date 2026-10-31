@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Voice Studio",
+    "description": "Generate speech with a managed reference-voice library across local and online TTS providers, and make RVC song covers with MSST or built-in separation. Emotion-aware, with optional QQ delivery."
+  }
+}
