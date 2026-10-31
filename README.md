@@ -64,30 +64,22 @@
 |---|---|---|---|
 | IndexTTS 2.x WebUI | 本地语音合成（情绪向量） | `http://127.0.0.1:7860` | Gradio，调用 `gen_single` |
 | GPT-SoVITS `api_v2.py` | 本地语音合成 | `http://127.0.0.1:9880` | **9874 是 WebUI，没有 TTS API** |
-| MSST_WebUI | 人声/伴奏分离 | `http://127.0.0.1:7860` | 需要「双轨」模型 |
+| MSST_WebUI | 人声/伴奏分离 | 留空（默认） | 需要「双轨」模型；不填则用 RVC 自带分离 |
 | RVC（整合包） | 歌曲换声 | 目录配置 | 需要 `assets/weights/*.pth` 与 `runtime/python.exe` |
 | qq-bridge | QQ 收发与语音发送 | 仓库目录 + 内置 3100 控制台 | 见 [QQ 发送](#qq-发送交给-qq-bridge) |
 
 ## 安装
 
-### 方式一：应用内安装（推荐）
-
-在 DSH 桌面端打开 **设置 → 插件**，把本目录作为本地包装入；或在对话里让 Agent 执行
-`plugin_manager install_bundle`（目标为本仓库目录的绝对路径）。
-
-### 方式二：CLI 安装
+### 方式一：从 GitHub 安装
 
 ```bash
-# 从本仓库目录安装（本地链接）
-dsh plugin --profile desktop add /path/to/dsh-plugin-voice-studio
+dsh plugin --profile web add github:keduoli-lovely/dsh-plugin-voice-studio
 ```
 
-### 方式三：npm 包 / Release 包
-
-`npm pack` 生成的 `dsh-plugin-voice-studio-*.tgz`（Release 附件）可以直接作为安装源：
+### 方式二：本地目录安装
 
 ```bash
-dsh plugin --profile desktop add ./dsh-plugin-voice-studio-0.2.0.tgz
+dsh plugin --profile web add /path/to/dsh-plugin-voice-studio
 ```
 
 安装后**刷新设置页**即可看到「语音工坊」。
@@ -313,12 +305,6 @@ python -m py_compile worker/*.py
 npm pack            # 产出安装包
 ```
 
-常见约定（踩过的坑）：
-
-- RVC 整合包的 `TEMP\` 可能对当前账户不可写 → worker 把 `TEMP/TMP/NUMBA_CACHE_DIR` 指向可写目录，否则 numba 导入 librosa 会卡死。
-- Windows Python 默认 cp936 → worker 输出 ASCII-safe JSON，父进程设置 `PYTHONIOENCODING=utf-8`。
-- Host 没有可回读的控制台 → 激活失败写 `boot.log`；路由与工具分别 try/catch。
-
 ## 故障排查
 
 | 现象 | 原因 | 处理 |
@@ -327,7 +313,7 @@ npm pack            # 产出安装包
 | `cannot get property "webServer" without inject` | 插件未声明依赖 | 本仓库已修复（`apply.inject`），旧版本请升级 |
 | 本地 TTS 报 `fetch failed` | 服务没开或地址错 | 启动 IndexTTS / GPT-SoVITS `api_v2.py`，检查端口 |
 | 旧版 `plugin_manager` 保存设置后音色库清空 | patch 合并重置了数组 | 本仓库已修复（深合并） |
-| 翻唱很慢（>20 分钟） | RVC 的 `TEMP` 不可写导致 numba 卡住 | 参见开发约定 |
+| 翻唱很慢（>20 分钟） | RVC 的 `TEMP` 目录不可写，numba 缓存卡住 | 检查 RVC 目录写权限，或换到可写目录 |
 | QQ 里说「语音库是空的」 | 模型先查了 `qq_list_voices` | 已在系统提示词中要求直接调用 `voice_generate` |
 | `qq_send_voice` 不存在 | bridge 语音开关关闭 / 未重启 | 设置页打开开关并重启 qq-bridge |
 | bridge 日志「事件流 0 帧」 | `dsh.baseUrl` 是上一次的端口 | 状态页一键同步 + 重启 qq-bridge |

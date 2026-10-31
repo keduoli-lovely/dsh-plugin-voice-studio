@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.2.1] - 2026-10-31
+
+### Changed
+
+- 翻唱的 `msstUrl` 默认改为**空**：不填即使用 RVC 内置 PyMSS 分离，避免默认指向 7860
+  与 IndexTTS 抢端口造成误解。
+- README：安装方式收敛为「从 GitHub 安装 / 本地目录安装」两种；移除开发章节里的实现细节约定。
+
 ## [0.2.0] - 2026-10-31
 
 ### Added
