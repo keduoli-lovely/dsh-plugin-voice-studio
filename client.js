@@ -881,11 +881,13 @@
 
           tab === 'cover'
             ? h('div', { className: 'vs-tab-body' },
-              h(Group, { title: 'RVC API', hint: '翻唱通过 HTTP 调用 RVC，不在本机读取目录；RVC 可以部署在另一台机器' },
-                h(Row, { label: 'RVC API 地址', hint: '在 RVC 机器上运行 server/rvc-api.py' },
+              h(Group, { title: 'RVC', hint: '直接填 RVC WebUI 地址（Gradio /run 接口）或 RVC API 地址；自动识别' },
+                h(Row, { label: 'RVC 地址', hint: 'RVC WebUI（如 http://ip:7897）或 server/rvc-api.py' },
                   h(Input, { value: cfg.cover.rvcUrl || '', placeholder: 'http://127.0.0.1:7866', onChange: function (e) { patchDraft(['cover', 'rvcUrl'])(e.target.value) } })),
+                h(Row, { label: '分离服务地址（可选）', hint: 'RVC WebUI 的分离接口无法被程序化等待；留空则用 MSST 或 RVC API 分离' },
+                  h(Input, { value: cfg.cover.separateUrl || '', placeholder: 'http://127.0.0.1:7866（server/rvc-api.py）', onChange: function (e) { patchDraft(['cover', 'separateUrl'])(e.target.value) } })),
                 h(Row, { label: T.msst, hint: T.msstHint },
-                  h(Input, { value: cfg.cover.msstUrl || '', placeholder: '留空 = 用 RVC API 自带的 PyMSS 分离', onChange: function (e) { patchDraft(['cover', 'msstUrl'])(e.target.value) } })),
+                  h(Input, { value: cfg.cover.msstUrl || '', placeholder: '留空 = 用分离服务（server/rvc-api.py）', onChange: function (e) { patchDraft(['cover', 'msstUrl'])(e.target.value) } })),
                 h(Row, { label: T.coverModel },
                   h(Select, {
                     value: cfg.cover.model || '',

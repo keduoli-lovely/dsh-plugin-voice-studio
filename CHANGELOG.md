@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.4.0] - 2026-10-31
+
+### Added
+
+- **直接使用 RVC WebUI 的 Gradio API**：`rvcUrl` 现在可以填 WebUI 地址（例如 7897），插件自动识别后端：
+  - 模型列表：`POST /run/infer_refresh`
+  - 索引：`POST /run/infer_change_voice`
+  - 换声：`POST /run/infer_convert`（base64 音频进、`/file=` 下载结果）
+  - **换声不再需要任何附加服务**。
+- 新增 `cover.separateUrl`：仅用于人声分离的 RVC API 地址（`server/rvc-api.py`）。
+
+### Changed
+
+- `server/rvc-api.py` 从「必需」降级为「可选」：只在需要自动分离、或不想用 MSST 时启动。
+- 设置页翻唱页签：字段改为「RVC 地址」「分离服务地址」「MSST 地址」，并说明自动识别。
+
+### Known
+
+- RVC WebUI 的 `pymss_separate` 是 Gradio 流式生成器，该构建关闭了 `/queue/join`，HTTP 调用只能拿到第一帧，
+  因此分离仍需要 MSST_WebUI 或 `server/rvc-api.py`。
+
 ## [0.3.1] - 2026-10-31
 
 ### Added
