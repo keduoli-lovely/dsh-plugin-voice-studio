@@ -174,13 +174,21 @@ GPT-SoVITS 与 RVC 没有情绪参数，结果里会如实标注「该提供商�
 
 ### RVC API 服务（在 RVC 机器上启动）
 
-```bash
-# 用 RVC 整合包自带的 python 运行，脚本在插件目录的 server/ 下
-runtime\python.exe server\rvc-api.py --port 7866 --rvc-root D:\path\to\RVC
+> **注意区分**：RVC 的 Gradio **WebUI**（`webui.py`，可能跑在 7897 等端口）**不是** RVC API，
+> 对它的 `/models`、`/health` 请求会 404。翻唱要填的是下面这个 `server/rvc-api.py`
+> 服务的地址（默认 7866）。WebUI 可以同时开着，互不影响。
 
-# 需要被另一台机器访问时：
-runtime\python.exe server\rvc-api.py --host 0.0.0.0 --port 7866 --rvc-root D:\path\to\RVC
+```bash
+# 方式一：在 RVC 根目录运行自带的启动脚本（默认 7866，绑定 0.0.0.0）
+cd D:\path\to\RVC
+<插件目录>\server\start-rvc-api.bat 7866
+
+# 方式二：直接命令
+runtime\python.exe <插件目录>\server\rvc-api.py --host 0.0.0.0 --port 7866 --rvc-root D:\path\to\RVC
 ```
+
+启动后浏览器打开 `http://<RVC机器IP>:7866/` 应看到
+`{"service":"dsh-voice-studio RVC API", ...}`，这就是填进插件的地址。
 
 | 端点 | 用途 |
 |---|---|
@@ -335,6 +343,7 @@ npm pack            # 产出安装包
 | 本地 TTS 报 `fetch failed` | 服务没开或地址错 | 启动 IndexTTS / GPT-SoVITS `api_v2.py`，检查端口 |
 | 旧版 `plugin_manager` 保存设置后音色库清空 | patch 合并重置了数组 | 本仓库已修复（深合并） |
 | 翻唱只出 WAV 没有 MP3 | 本机 ffmpeg 不在 PATH | 在设置页填 `ffmpegPath`，或把 ffmpeg 加入 PATH |
+| `/models` 返回 404 | 地址填成了 RVC WebUI（Gradio），不是 RVC API | 在 RVC 机器运行 `server/rvc-api.py`（默认 7866）；插件会直接提示这一点 |
 | QQ 里说「语音库是空的」 | 模型先查了 `qq_list_voices` | 已在系统提示词中要求直接调用 `voice_generate` |
 | `qq_send_voice` 不存在 | bridge 语音开关关闭 / 未重启 | 设置页打开开关并重启 qq-bridge |
 | bridge 日志「事件流 0 帧」 | `dsh.baseUrl` 是上一次的端口 | 状态页一键同步 + 重启 qq-bridge |

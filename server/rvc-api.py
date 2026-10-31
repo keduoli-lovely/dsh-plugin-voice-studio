@@ -155,6 +155,16 @@ def save_upload(upload: UploadFile) -> str:
     return path
 
 
+@app.get("/")
+def index():
+    return {
+        "service": "dsh-voice-studio RVC API",
+        "rvcRoot": ROOT,
+        "endpoints": ["/health", "/models", "/convert", "/separate", "/docs"],
+        "hint": "这是 RVC API 服务；如果看到的是 Gradio 界面（/config 里有 infer_convert），那是 RVC WebUI，不是本服务。",
+    }
+
+
 @app.get("/health")
 def health():
     models, _indexes = list_models()

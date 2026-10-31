@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.1] - 2026-10-31
+
+### Added
+
+- `server/rvc-api.py` 增加 `GET /` 服务自述，方便在浏览器确认「这是 RVC API，不是 Gradio WebUI」。
+- `server/start-rvc-api.bat`：在 RVC 根目录一键启动（默认 7866、绑定 0.0.0.0）。
+
+### Changed
+
+- 当 `rvcUrl` 指向的是 RVC **WebUI**（Gradio，含 `infer_convert` 接口）时，
+  模型列表/转换/分离会返回明确诊断：「这是 WebUI 不是 RVC API，请运行 server/rvc-api.py（默认 7866）」。
+
 ## [0.3.0] - 2026-10-31
 
 ### Changed
