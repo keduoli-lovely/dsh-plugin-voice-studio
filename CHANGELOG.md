@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.3.0] - 2026-10-31
+
+### Changed
+
+- **翻唱改为纯 HTTP**：RVC 不再通过本地目录调用，新增 `server/rvc-api.py`
+  （`/health`、`/models`、`/convert`、`/separate`）；插件只配置 `rvcUrl`，
+  RVC 因此可以和 DSH 部署在不同机器上。
+- 混音改为纯 Node（`lib/wav.js`）：WAV 编解码、重采样、RMS 对齐全部内置，
+  不再需要本机 Python worker；ffmpeg 只用于可选的 loudnorm 与 MP3 输出。
+- 歌曲只接受本机绝对路径：移除「音乐目录」「允许下载歌曲（链接）」「yt-dlp 路径」三项。
+
+### Added
+
+- `server/rvc-api.py`、`lib/rvc.js`、`lib/wav.js`。
+- 设置页翻唱页签：RVC API 地址、F0 方法、ffmpeg 路径、模型错误提示。
+
+### Removed
+
+- `worker/*.py`（RVC 转换 / 分离 / 混音脚本）与 RVC 本地目录扫描。
+
 ## [0.2.1] - 2026-10-31
 
 ### Changed

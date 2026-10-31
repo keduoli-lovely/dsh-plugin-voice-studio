@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs'
 import { basename, join, normalize as normalizePath } from 'node:path'
 
 import { listModels, makeCover } from './lib/cover.js'
+import { rvcHealth } from './lib/rvc.js'
 import { describeEmotion, resolveEmotion } from './lib/emotion.js'
 import { bridgeLinkInfo, bridgeVoiceInfo, enableBridgeVoice, qqStatus, sendToQq, setBridgeDshUrl } from './lib/qq.js'
 import { Store } from './lib/store.js'
@@ -63,7 +64,7 @@ class VoiceStudio {
   async state() {
     await this.ready
     const config = this.store.read()
-    const models = listModels(this.store)
+    const models = await listModels(this.store)
     const bridge = bridgeVoiceInfo(this.store)
     const origin = this.origin()
     const link = bridgeLinkInfo(this.store)
@@ -333,14 +334,11 @@ class VoiceStudio {
       if (!all) results[id].selected = true
     }
 
-    const rvcRoot = config.cover?.rvcRoot
-    const rvcOk = Boolean(rvcRoot && existsSync(rvcRoot))
-    const rvcPython = rvcOk ? this.store.detectRvcPython(rvcRoot) : ''
-    results.rvc = {
-      kind: 'local',
-      label: 'RVC（本地）',
-      ok: Boolean(rvcOk && rvcPython),
-      detail: rvcOk ? `${rvcRoot}${rvcPython ? ' · python 已找到' : ' · 未找到 python'}` : '未配置 RVC 目录',
+    if (config.cover?.rvcUrl) {
+      const health = await rvcHealth(this.store)
+      results.rvc = { kind: 'http', label: 'RVC API', url: config.cover.rvcUrl, ok: health.ok, detail: health.detail }
+    } else if (all) {
+      results.rvc = { kind: 'http', label: 'RVC API', ok: false, detail: '未配置 RVC API 地址' }
     }
 
     if (config.cover?.msstUrl) {
@@ -627,17 +625,9 @@ function registerRoutes(studio, webServer) {
     kind: 'exact',
     path: `${BASE}/api/models`,
     handler: (req, res) => guard(res, async () => {
-      const url = new URL(req.url, 'http://localhost')
-      if (url.searchParams.get('rescan') === '1') {
-        const detected = studio.store.detectRvcRoot()
-        if (detected && !studio.store.read().cover?.rvcRoot) {
-          await studio.store.update((draft) => {
-            draft.cover.rvcRoot = detected
-            draft.cover.rvcPython = studio.store.detectRvcPython(detected)
-          })
-        }
-      }
-      json(res, 200, { ok: true, ...listModels(studio.store) })
+      // No local scan: the model list comes from the RVC API every time, so a
+      // remote RVC host is always reflected.
+      json(res, 200, { ok: true, ...(await listModels(studio.store)) })
     }),
   }))
 
@@ -736,11 +726,11 @@ function registerTools(studio, tools) {
   disposers.push(tools.register({
     name: 'song_cover',
     description:
-      'Make a song cover: take a song the user names, separate vocals and instrumental, convert the vocal with an RVC voice model, and return the mixed audio. Use it whenever the user asks to 翻唱 / cover / sing a song in a given voice. The song argument accepts a title (searched in the configured music folders), a local audio path, or a URL when downloading is enabled. The RVC model defaults to the settings choice and can be any model id from the inventory. The call runs the whole pipeline synchronously and can take a few minutes; the returned paths are the mixed MP3/WAV.',
+      'Make a song cover: separate vocals and instrumental on the RVC server, convert the vocal with an RVC voice model, and return the mixed audio. Use it whenever the user asks to 翻唱 / cover / sing a song in a given voice. The song argument must be a local audio file path on this machine. The RVC model defaults to the settings choice and can be any model id from the inventory. The call runs the whole pipeline synchronously and can take a few minutes; the returned paths are the mixed MP3/WAV.',
     parameters: {
       type: 'object',
       properties: {
-        song: { type: 'string', description: 'Song title, absolute audio path, or URL.' },
+        song: { type: 'string', description: 'Absolute path of a local audio file on this machine.' },
         model: { type: 'string', description: 'RVC model id (e.g. shaonv.pth) or absolute .pth path. Omit to use the configured default.' },
         index: { type: 'string', description: 'Optional index file path; omit to auto-match the model.' },
         key_shift: { type: 'number', description: 'Semitone shift for the converted vocal. Default from settings, usually 0.' },
@@ -844,13 +834,13 @@ function registerTools(studio, tools) {
         }
       }
       if (action === 'models') {
-        const models = listModels(studio.store)
+        const models = await listModels(studio.store)
         return {
           detail: [
-            `RVC 根目录：${models.root || '(未配置)'}`,
-            `Python：${models.python || '(未找到)'}`,
-            `分离：${models.msstConfigured ? 'MSST_WebUI' : 'RVC 内置 PyMSS'}`,
-            ...models.models.map((model) => `- ${model.id}（${(model.size / 1024 / 1024).toFixed(0)} MiB）`),
+            `RVC API：${models.rvcUrl || '(未配置)'}`,
+            `服务端根目录：${models.root || '(未知)'}${models.error ? ` · ${models.error}` : ''}`,
+            `分离：${cfg.cover?.msstUrl ? 'MSST_WebUI' : 'RVC API /separate'}`,
+            ...models.models.map((model) => `- ${model.id}（${(Number(model.size || 0) / 1024 / 1024).toFixed(0)} MiB）`),
             ...models.indexes.slice(0, 10).map((index) => `  index: ${index.id}`),
           ].join('\n'),
         }
@@ -877,7 +867,7 @@ function registerTools(studio, tools) {
           ...Object.entries(PROVIDERS).map(([id, meta]) => `- ${id}: ${meta.label}${id === active ? ' ←' : ''}`),
           `情绪来源模式：${cfg.emotion?.mode || 'auto'}`,
           `QQ：${cfg.qq?.enabled ? cfg.qq?.mode : '未启用'}`,
-          `参考音色 ${studio.store.listVoices().length} 个；RVC 模型 ${listModels(studio.store).models.length} 个`,
+          `参考音色 ${studio.store.listVoices().length} 个；RVC 模型 ${(await listModels(studio.store)).models.length} 个`,
         ].join('\n'),
       }
     },
@@ -981,3 +971,6 @@ export function apply(ctx) {
 apply.inject = ['tools', 'webServer']
 
 export default apply
+
+// hmr-probe 639290576986322043
+

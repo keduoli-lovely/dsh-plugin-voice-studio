@@ -881,11 +881,11 @@
 
           tab === 'cover'
             ? h('div', { className: 'vs-tab-body' },
-              h(Group, { title: 'RVC', hint: T.coverModelHint },
-                h(Row, { label: T.rvcRoot },
-                  h(Input, { value: cfg.cover.rvcRoot || '', placeholder: 'D:\\...\\RVC', onChange: function (e) { patchDraft(['cover', 'rvcRoot'])(e.target.value) } })),
-                h(Row, { label: T.rvcPython },
-                  h(Input, { value: cfg.cover.rvcPython || '', placeholder: 'runtime/python.exe', onChange: function (e) { patchDraft(['cover', 'rvcPython'])(e.target.value) } })),
+              h(Group, { title: 'RVC API', hint: '翻唱通过 HTTP 调用 RVC，不在本机读取目录；RVC 可以部署在另一台机器' },
+                h(Row, { label: 'RVC API 地址', hint: '在 RVC 机器上运行 server/rvc-api.py' },
+                  h(Input, { value: cfg.cover.rvcUrl || '', placeholder: 'http://127.0.0.1:7866', onChange: function (e) { patchDraft(['cover', 'rvcUrl'])(e.target.value) } })),
+                h(Row, { label: T.msst, hint: T.msstHint },
+                  h(Input, { value: cfg.cover.msstUrl || '', placeholder: '留空 = 用 RVC API 自带的 PyMSS 分离', onChange: function (e) { patchDraft(['cover', 'msstUrl'])(e.target.value) } })),
                 h(Row, { label: T.coverModel },
                   h(Select, {
                     value: cfg.cover.model || '',
@@ -902,24 +902,21 @@
                   h('option', { value: '' }, T.coverIndexAuto),
                   models.indexes.map(function (index) { return h('option', { key: index.id, value: index.path }, index.name + (index.trained ? ' (trained)' : '')) }),
                   )),
+                h(Row, { label: 'F0 方法' },
+                  h(Select, { value: cfg.cover.f0Method || 'rmvpe', onChange: function (e) { patchDraft(['cover', 'f0Method'])(e.target.value) } },
+                    h('option', { value: 'rmvpe' }, 'rmvpe'),
+                    h('option', { value: 'fcpe' }, 'fcpe'),
+                    h('option', { value: 'pm' }, 'pm'),
+                    )),
                 h(Row, { label: T.coverShift },
                   h(Input, { type: 'number', step: 1, value: cfg.cover.f0UpKey, onChange: function (e) { patchDraft(['cover', 'f0UpKey'])(Number(e.target.value)) } })),
-                h(Row, { label: T.msst, hint: T.msstHint },
-                  h(Input, { value: cfg.cover.msstUrl || '', onChange: function (e) { patchDraft(['cover', 'msstUrl'])(e.target.value) } })),
-                h(Row, { label: T.musicDirs, hint: T.musicDirsHint },
-                  h('textarea', {
-                    className: 'vs-textarea', rows: 3,
-                    value: (cfg.cover.musicDirs || []).join('\n'),
-                    onChange: function (e) { patchDraft(['cover', 'musicDirs'])(e.target.value.split(/\r?\n/).map(function (v) { return v.trim() }).filter(Boolean)) },
-                  })),
-                h(Row, { label: T.allowDownload },
-                  h(Switch, { checked: Boolean(cfg.cover.allowDownload), onChange: patchDraft(['cover', 'allowDownload']) })),
-                h(Row, { label: T.ytdlp },
-                  h(Input, { value: cfg.cover.ytdlpPath || '', onChange: function (e) { patchDraft(['cover', 'ytdlpPath'])(e.target.value) } })),
+                h(Row, { label: 'ffmpeg 路径', hint: '留空用 PATH 里的 ffmpeg；没有则只输出 WAV' },
+                  h(Input, { value: cfg.cover.ffmpegPath || '', onChange: function (e) { patchDraft(['cover', 'ffmpegPath'])(e.target.value) } })),
                 h('div', { className: 'vs-actions' }, h(Button, { onClick: rescanModels, disabled: busy === 'models' }, T.coverRescan)),
+                models.error ? h(Notice, { kind: 'error' }, String(models.error)) : null,
               ),
               h(Group, { title: T.coverStart },
-                h(Input, { value: songInput, placeholder: '一样的月光 / D:\\music\\song.flac / https://…', onChange: function (e) { setSongInput(e.target.value) } }),
+                h(Input, { value: songInput, placeholder: 'D:\\music\\song.wav（本机绝对路径）', onChange: function (e) { setSongInput(e.target.value) } }),
                 h('div', { className: 'vs-actions' },
                   h(Button, { variant: 'primary', disabled: busy === 'cover', onClick: startCover }, busy === 'cover' ? T.covering : T.coverStart),
                 ),
@@ -931,7 +928,9 @@
                       ? h('audio', { controls: true, src: job.result.mp3Url, style: { width: '100%' } })
                       : null,
                     job.result
-                      ? h('div', { className: 'vs-muted' }, '歌曲：' + job.result.song + ' · 模型：' + job.result.model + ' · 分离：' + job.result.separation)
+                      ? h('div', { className: 'vs-muted' },
+                        '歌曲：' + job.result.song + ' · 模型：' + job.result.model + ' · 分离：' + job.result.separation
+                        + (job.result.loudnessApplied === false ? ' · 未做 loudnorm（ffmpeg 不可用）' : ''))
                       : null,
                   )
                   : null,

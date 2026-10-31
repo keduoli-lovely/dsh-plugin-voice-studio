@@ -13,3 +13,8 @@ work/
 Thumbs.db
 desktop.ini
 *.log
+
+# Python bytecode
+__pycache__/
+*.pyc
+

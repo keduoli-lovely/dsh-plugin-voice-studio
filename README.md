@@ -48,11 +48,11 @@
 | 多提供商 TTS | 6 个内置适配器，配置统一为 `baseUrl / apiKey / model / voice`（本地提供商使用 `refAudioId`） |
 | 参考音色库 | 音频复制到 `~/.dsh-voice-studio/refs/`，不引用原路径；同名导入返回 `409 VOICE_CONFLICT`，页面选择替换或另存 |
 | 情绪 | 显式参数 → DSH 情绪插件（Service / `get_mood` 工具 / `POST /emotion/api/state`）→ 内置词典；按引擎映射 |
-| 歌曲翻唱 | 标题/路径/链接找歌；MSST 或 RVC 内置 PyMSS 分离（失败自动回退）；RVC 模型自动扫描；混音按原人声 RMS 对齐并 loudnorm |
+| 歌曲翻唱 | RVC 全程走 HTTP（模型列表/转换/分离），RVC 可与 DSH 分开部署；混音在本地用纯 Node 完成，按原人声 RMS 对齐并可选 loudnorm |
 | QQ 发送 | 渲染 → 复制进 qq-bridge 语音库 → 调用其 `qq_send_voice`；缺 key/token 时给出可执行的下一步 |
 | 随机语音 | 宿主端概率 + 冷却 + 每小时上限，命中才计数；唱歌永不随机 |
 | 可观测 | 状态页显示 DSH 地址/端口、qq-bridge 配置的 DSH 地址是否一致，并按「当前选择」探测服务 |
-| 零第三方依赖 | 只用 Node 内置模块；RVC/分离/混音通过 Python worker 调用本机已有环境 |
+| 零第三方依赖 | 插件只用 Node 内置模块；RVC 侧跑一个自带的 `server/rvc-api.py`（FastAPI），混音不再需要本地 Python |
 
 ## 环境要求
 
@@ -64,8 +64,8 @@
 |---|---|---|---|
 | IndexTTS 2.x WebUI | 本地语音合成（情绪向量） | `http://127.0.0.1:7860` | Gradio，调用 `gen_single` |
 | GPT-SoVITS `api_v2.py` | 本地语音合成 | `http://127.0.0.1:9880` | **9874 是 WebUI，没有 TTS API** |
-| MSST_WebUI | 人声/伴奏分离 | 留空（默认） | 需要「双轨」模型；不填则用 RVC 自带分离 |
-| RVC（整合包） | 歌曲换声 | 目录配置 | 需要 `assets/weights/*.pth` 与 `runtime/python.exe` |
+| MSST_WebUI | 人声/伴奏分离（可选） | 留空（默认） | 不填则用 RVC API 的 `/separate` |
+| RVC API | 歌曲换声 + 分离 | `http://127.0.0.1:7866` | 在 RVC 机器上运行 `server/rvc-api.py`；可跨机器 |
 | qq-bridge | QQ 收发与语音发送 | 仓库目录 + 内置 3100 控制台 | 见 [QQ 发送](#qq-发送交给-qq-bridge) |
 
 ## 安装
@@ -89,7 +89,7 @@ dsh plugin --profile web add /path/to/dsh-plugin-voice-studio
 1. **配置一个语音提供商**：设置 → 语音工坊 → 语音合成，选择提供商并填写地址（本地填 `baseUrl`，在线填 `apiKey`）。
 2. **导入参考音色**：语音合成页选「参考音色」，或到「参考音色」页上传/导入一个 3~15 秒的干净人声。
 3. **试听**：语音合成页底部输入文字，点「生成」，确认能出声、音色正确。
-4. **（可选）翻唱**：歌曲翻唱页填 RVC 目录与模型，点「重新扫描模型」；输入歌名或路径开始翻唱。
+4. **（可选）翻唱**：在 RVC 机器上启动 `server/rvc-api.py`，歌曲翻唱页填它的地址，点「重新扫描模型」；输入**本机绝对路径**开始翻唱。
 5. **（可选）QQ**：QQ 发送页启用并确认 `qq-bridge` 路径；点「把当前 DSH 地址写入 qq-bridge」，重启 qq-bridge。
 
 ## 语音合成
@@ -164,29 +164,48 @@ GPT-SoVITS 与 RVC 没有情绪参数，结果里会如实标注「该提供商�
 
 ## 歌曲翻唱
 
-流程：**找歌 → 分离 → RVC 换声 → 混音母带**。
+流程：**给歌（本机路径）→ 分离 → RVC 换声（HTTP）→ 混音母带（本地）**。
 
-1. **找歌**：标题（在「音乐目录」递归模糊匹配，返回候选）、绝对路径、链接（需开启下载并配置 yt-dlp）。
-2. **分离**：配置了 `msstUrl` 就走 MSST_WebUI；否则用 RVC 自带 PyMSS；MSST 失败自动回退，并把两边失败原因一起返回。
-3. **RVC**：自动扫描 `assets/weights/*.pth` 与 `logs/*/G_*.pth`；索引按模型名自动匹配（优先 `added_`）；headless 调用 RVC 的 `VC` 类，不占用 WebUI 端口。
-4. **混音**：转换后的干声按分离人声 RMS 对齐 → 与伴奏相加 → 峰值 −1 dB → loudnorm（默认 `I=-11.5:TP=-1.0:LRA=11`），输出 24-bit WAV + 320 kbps MP3。
+1. **给歌**：`song` 只接受**本机绝对路径**（如 `D:\music\song.wav`）。音乐目录匹配、链接下载、yt-dlp 已移除。
+2. **分离**：配置了 `msstUrl` 就先试 MSST_WebUI；否则（或失败后）调用 RVC API 的 `POST /separate`（PyMSS）。
+3. **换声**：`GET /models` 拿模型与索引；`POST /convert` 上传干声，拿回转换后的 WAV。
+4. **混音**：本地纯 Node（`lib/wav.js`）按分离人声的 RMS 对齐后与伴奏相加、峰值 −1 dB；如果本机有 ffmpeg，
+   再做 loudnorm（默认 `I=-11.5:TP=-1.0:LRA=11`）并输出 320 kbps MP3，没有就只出 WAV。
 
-翻唱参数（设置页 → 歌曲翻唱）：
+### RVC API 服务（在 RVC 机器上启动）
+
+```bash
+# 用 RVC 整合包自带的 python 运行，脚本在插件目录的 server/ 下
+runtime\python.exe server\rvc-api.py --port 7866 --rvc-root D:\path\to\RVC
+
+# 需要被另一台机器访问时：
+runtime\python.exe server\rvc-api.py --host 0.0.0.0 --port 7866 --rvc-root D:\path\to\RVC
+```
+
+| 端点 | 用途 |
+|---|---|
+| `GET /health` | 存活与模型数量 |
+| `GET /models` | 模型与索引清单（插件下拉框的数据源） |
+| `POST /convert` | multipart：`file` + `model/index/f0_method/f0_up_key/index_rate/rms_mix/protect` → WAV |
+| `POST /separate` | multipart：`file` → `{ vocal, instrumental }`（base64 WAV，PyMSS） |
+
+脚本会自动把 `TEMP/TMP/NUMBA_CACHE_DIR` 指到自己的临时目录（RVC 整合包的 `TEMP\` 常常不可写）。
+
+### 参数（设置页 → 歌曲翻唱）
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `rvcRoot` | 自动探测 | RVC 整合包目录 |
-| `rvcPython` | 自动探测 `runtime/python.exe` | RVC 的 Python |
-| `model` | 第一个模型 | `.pth` 模型 id 或绝对路径 |
-| `index` | 自动匹配 | `.index` 路径 |
-| `f0Method` | `rmvpe` | 可选 `rmvpe` / `fcpe` / `pm` |
+| `rvcUrl` | 空 | RVC API 地址，例如 `http://127.0.0.1:7866` |
+| `msstUrl` | 空 | 可选；留空则用 RVC API 自带分离 |
+| `model` | 第一个模型 | 模型 id（来自 `/models`） |
+| `index` | 自动匹配 | 索引路径；留空按模型名匹配（优先 `added_`） |
+| `f0Method` | `rmvpe` | `rmvpe` / `fcpe` / `pm` |
 | `f0UpKey` | `0` | 升降调（半音） |
 | `indexRate` | `0.75` | 索引混合比例 |
 | `rmsMix` | `0.25` | 音量包络混合 |
 | `protect` | `0.33` | 辅音保护 |
-| `musicDirs` | `[]` | 音乐目录（找歌用） |
-| `msstUrl` | 空 | 留空则用 RVC 内置分离 |
-| `ytdlpPath` | 空 | 链接下载用 |
+| `ffmpegPath` | 空 | 本机 ffmpeg 路径；留空用 PATH，缺失时只输出 WAV |
+| `loudness` | `I=-11.5:TP=-1.0:LRA=11` | loudnorm 参数 |
 
 ## QQ 发送：交给 qq-bridge
 
@@ -219,7 +238,7 @@ QQ ⟶ SnowLuma（OneBot v11 WS）⟶ qq-bridge ⟶ DSH Web API（agent 对话�
 
 ## 状态页
 
-- **只探测当前选择**：TTS 只测选中的提供商；翻唱测本地 RVC（目录 + python）；MSST 填了才测；QQ 启用才测 qq-bridge。
+- **只探测当前选择**：TTS 只测选中的提供商；翻唱测 RVC API 的 `/health`；MSST 填了才测；QQ 启用才测 qq-bridge。
 - **服务签名校验**：`/config` 必须包含 `gen_single`（IndexTTS）或 `run_inference_single`（MSST），避免两个服务共用 7860 时误报 OK。
 - **DSH 端口**：显示 `http://127.0.0.1:<port>`、qq-bridge 配置的 `dsh.baseUrl` 与一致性；不一致时可一键同步（写 `dsh.baseUrl`，重启 qq-bridge 生效）。
 - 完整清单：`POST /tts-studio/api/probe?all=1`。
@@ -269,7 +288,7 @@ QQ ⟶ SnowLuma（OneBot v11 WS）⟶ qq-bridge ⟶ DSH Web API（agent 对话�
 | GET/POST | `/tts-studio/api/qq` | QQ 状态 / 发送测试 |
 | POST | `/tts-studio/api/qq/bridge-enable` | 打开 qq-bridge 两个语音开关 |
 | POST | `/tts-studio/api/qq/sync-dsh-url` | 把当前 DSH 地址写入 qq-bridge |
-| GET | `/tts-studio/api/models?rescan=1` | RVC 模型/索引清单 |
+| GET | `/tts-studio/api/models` | 从 RVC API 拉取模型/索引清单 |
 
 ## 数据目录
 
@@ -289,19 +308,21 @@ QQ ⟶ SnowLuma（OneBot v11 WS）⟶ qq-bridge ⟶ DSH Web API（agent 对话�
 ```
 index.js         Host 插件：路由、工具、系统提示词
 client.js        Client 插件：设置页（settings.section）
-lib/store.js     配置 + 参考音色库 + RVC 模型扫描
+lib/store.js     配置 + 参考音色库
 lib/tts.js       6 个提供商适配器 + Gradio 客户端
-lib/cover.js     找歌 / 分离 / RVC / 混音编排
+lib/cover.js     翻唱流水线编排（找歌/分离/换声/混音）
+lib/rvc.js       RVC API 客户端（health/models/convert/separate）
+lib/wav.js       WAV 编解码 + 重采样 + 混音（纯 Node）
 lib/qq.js        qq-bridge 交付 + OneBot/shell 兜底
 lib/emotion.js   情绪来源链 + 引擎映射
-worker/*.py      RVC 转换 / 分离 / 混音（调用本机 Python）
+server/rvc-api.py  RVC 侧 HTTP 服务（FastAPI）
 ```
 
 本地验证：
 
 ```bash
 node --check index.js client.js lib/*.js
-python -m py_compile worker/*.py
+python -m py_compile server/rvc-api.py
 npm pack            # 产出安装包
 ```
 
@@ -313,7 +334,7 @@ npm pack            # 产出安装包
 | `cannot get property "webServer" without inject` | 插件未声明依赖 | 本仓库已修复（`apply.inject`），旧版本请升级 |
 | 本地 TTS 报 `fetch failed` | 服务没开或地址错 | 启动 IndexTTS / GPT-SoVITS `api_v2.py`，检查端口 |
 | 旧版 `plugin_manager` 保存设置后音色库清空 | patch 合并重置了数组 | 本仓库已修复（深合并） |
-| 翻唱很慢（>20 分钟） | RVC 的 `TEMP` 目录不可写，numba 缓存卡住 | 检查 RVC 目录写权限，或换到可写目录 |
+| 翻唱只出 WAV 没有 MP3 | 本机 ffmpeg 不在 PATH | 在设置页填 `ffmpegPath`，或把 ffmpeg 加入 PATH |
 | QQ 里说「语音库是空的」 | 模型先查了 `qq_list_voices` | 已在系统提示词中要求直接调用 `voice_generate` |
 | `qq_send_voice` 不存在 | bridge 语音开关关闭 / 未重启 | 设置页打开开关并重启 qq-bridge |
 | bridge 日志「事件流 0 帧」 | `dsh.baseUrl` 是上一次的端口 | 状态页一键同步 + 重启 qq-bridge |
@@ -322,8 +343,8 @@ npm pack            # 产出安装包
 
 - 语音/视频**接收**仍为占位文本（桥接侧限制），本插件只负责「发出」。
 - IndexTTS 与 MSST 默认都想用 7860，必须错开端口。
-- MSST 需要能输出「人声 + 伴奏」双轨的模型；只有去混响模型时会回退 RVC PyMSS。
-- Application 类型壁纸/音源不涉及；RVC 若为 v1 模型索引匹配可能为空。
+- MSST 需要能输出「人声 + 伴奏」双轨的模型；否则回退 RVC API 的 `/separate`。
+- RVC API 需要先启动 `server/rvc-api.py`；跨机器时用 `--host 0.0.0.0` 并放行防火墙端口。
 - qq-bridge 的 preset 白名单是对方项目文件，升级/重跑 `setup-dsh.mjs` 后可能需要重新加入四个工具名。
 
 ## 许可证
