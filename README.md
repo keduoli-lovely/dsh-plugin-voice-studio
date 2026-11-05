@@ -65,7 +65,7 @@
 | IndexTTS 2.x WebUI | 本地语音合成（情绪向量） | `http://127.0.0.1:7860` | Gradio，调用 `gen_single` |
 | GPT-SoVITS `api_v2.py` | 本地语音合成 | `http://127.0.0.1:9880` | **9874 是 WebUI，没有 TTS API** |
 | MSST_WebUI | 人声/伴奏分离（可选） | 留空 | 不填则用分离服务 `server/rvc-api.py` |
-| RVC Worker（推荐） | 模型/换声/分离/进程控制 | `http://<IP>:7870` | 独立 Python 服务，跑在 RVC/MSST 机器上，慢任务不卡 DSH |
+| [RVC Worker](https://github.com/keduoli-lovely/rvc-worker) | 模型/换声/分离/进程控制 | `http://<IP>:7870` | 独立 Python 服务，跑在 RVC/MSST 机器上，慢任务不卡 DSH |
 | RVC WebUI（直连回退） | 歌曲换声 | `http://<IP>:7897` | 没有 worker 时直接调它的 Gradio `/run/*` 接口 |
 | RVC API（旧，可选） | 仅用于人声分离 | `http://<IP>:7866` | 兼容保留；新部署请用 rvc-worker |
 | qq-bridge | QQ 收发与语音发送 | 仓库目录 + 内置 3100 控制台 | 见 [QQ 发送](#qq-发送交给-qq-bridge) |
@@ -83,8 +83,6 @@ dsh plugin --profile web add github:keduoli-lovely/dsh-plugin-voice-studio
 ```bash
 dsh plugin --profile web add /path/to/dsh-plugin-voice-studio
 ```
-
-安装后**刷新设置页**即可看到「语音工坊」。
 
 ## 快速开始
 
@@ -140,8 +138,6 @@ dsh plugin --profile web add /path/to/dsh-plugin-voice-studio
 
 ## 情绪系统
 
-来源链（缺插件也绝不失败）：
-
 1. 调用方显式传 `emotion` / `intensity`（工具参数或设置页）；
 2. 已安装的 DSH 情绪插件：
    - Host Service：`ctx.get('emotion' | 'emotions' | 'sentiment' | 'affect')` 上的 `classify` / `detect` 等；
@@ -175,7 +171,7 @@ GPT-SoVITS 与 RVC 没有情绪参数，结果里会如实标注「该提供商�
 4. **混音**：本地纯 Node（`lib/wav.js`）按分离人声的 RMS 对齐后与伴奏相加、峰值 −1 dB；如果本机有 ffmpeg，
    再做 loudnorm（默认 `I=-11.5:TP=-1.0:LRA=11`）并输出 320 kbps MP3，没有就只出 WAV。
 
-### 推荐：rvc-worker（独立服务，跑在 RVC/MSST 机器上）
+### [rvc-worker](https://github.com/keduoli-lovely/rvc-worker)（独立服务，跑在 RVC/MSST 机器上）
 
 RVC WebUI 是 Gradio 应用，分离是流式生成器且队列路由被关闭，HTTP 无法等待完成；
 `rvc-worker` 直接 import RVC 的 `VC` 类与 PyMSS，提供任务化 API（含 SSE 进度、进程控制），
