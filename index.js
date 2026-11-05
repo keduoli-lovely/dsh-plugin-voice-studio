@@ -12,11 +12,12 @@
  * the agent sees the same operations as tools. No operation exists only in one
  * of the two places.
  */
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join, normalize as normalizePath } from 'node:path'
 
 import { listModels, makeCover } from './lib/cover.js'
 import { rvcHealth } from './lib/rvc.js'
+import { workerHealth } from './lib/worker.js'
 import { describeEmotion, resolveEmotion } from './lib/emotion.js'
 import { bridgeLinkInfo, bridgeVoiceInfo, enableBridgeVoice, qqStatus, sendToQq, setBridgeDshUrl } from './lib/qq.js'
 import { Store } from './lib/store.js'
@@ -59,12 +60,69 @@ class VoiceStudio {
     this.store = new Store()
     this.ready = this.store.load()
     this.jobs = new Map()
+    this.modelCache = this.loadModelCache()
+    this._refreshing = null
+    this._lastRefreshAt = 0
+  }
+
+  /** Model inventory cache, file-backed so opening the page never waits on RVC. */
+  loadModelCache() {
+    try {
+      const cache = JSON.parse(readFileSync(join(this.store.dir, 'rvc-cache.json'), 'utf8'))
+      if (cache && Array.isArray(cache.models)) return cache
+    } catch {
+      /* first run */
+    }
+    return { style: '', root: '', models: [], indexes: [], error: null, checkedAt: 0 }
+  }
+
+  saveModelCache(cache) {
+    try {
+      writeFileSync(join(this.store.dir, 'rvc-cache.json'), JSON.stringify(cache), 'utf8')
+    } catch {
+      /* cache is best effort */
+    }
+  }
+
+  cachedModels() {
+    return {
+      ...this.modelCache,
+      cached: Boolean(this.modelCache.checkedAt),
+      refreshing: Boolean(this._refreshing),
+      stale: !this.modelCache.checkedAt || Date.now() - this.modelCache.checkedAt > 120000,
+    }
+  }
+
+  /** Refresh the inventory off the request path; concurrent callers share one run. */
+  refreshModels({ force = false } = {}) {
+    if (this._refreshing) return this._refreshing
+    if (!force && Date.now() - this._lastRefreshAt < 30000) return Promise.resolve(this.cachedModels())
+    this._lastRefreshAt = Date.now()
+    this._refreshing = (async () => {
+      try {
+        const result = await listModels(this.store)
+        this.modelCache = { ...result, checkedAt: Date.now() }
+      } catch (error) {
+        this.modelCache = { ...this.modelCache, error: brief(error?.message || error, 400), checkedAt: Date.now() }
+      } finally {
+        this._refreshing = null
+        this.saveModelCache(this.modelCache)
+      }
+      return this.cachedModels()
+    })()
+    return this._refreshing
+  }
+
+  /** Fire-and-forget warm-up; state() must never await it. */
+  warmModels() {
+    void this.refreshModels({ force: false }).catch(() => {})
   }
 
   async state() {
     await this.ready
     const config = this.store.read()
-    const models = await listModels(this.store)
+    this.warmModels()
+    const models = this.cachedModels()
     const bridge = bridgeVoiceInfo(this.store)
     const origin = this.origin()
     const link = bridgeLinkInfo(this.store)
@@ -334,11 +392,15 @@ class VoiceStudio {
       if (!all) results[id].selected = true
     }
 
+    if (config.cover?.workerUrl) {
+      const health = await workerHealth(this.store)
+      results.worker = { kind: 'http', label: 'RVC Worker', url: config.cover.workerUrl, ok: health.ok, detail: health.detail }
+    }
     if (config.cover?.rvcUrl) {
       const health = await rvcHealth(this.store)
-      results.rvc = { kind: 'http', label: 'RVC API', url: config.cover.rvcUrl, ok: health.ok, detail: health.detail }
-    } else if (all) {
-      results.rvc = { kind: 'http', label: 'RVC API', ok: false, detail: '未配置 RVC API 地址' }
+      results.rvc = { kind: 'http', label: 'RVC（直连）', url: config.cover.rvcUrl, ok: health.ok, detail: health.detail }
+    } else if (all && !config.cover?.workerUrl) {
+      results.rvc = { kind: 'http', label: 'RVC', ok: false, detail: '未配置 RVC 地址' }
     }
 
     if (config.cover?.msstUrl) {
@@ -399,6 +461,8 @@ function registerRoutes(studio, webServer) {
       })
     }
   }
+
+  studio.ready.then(() => studio.warmModels()).catch(() => {})
 
   disposers.push(webServer.register({
     kind: 'exact',
@@ -625,9 +689,16 @@ function registerRoutes(studio, webServer) {
     kind: 'exact',
     path: `${BASE}/api/models`,
     handler: (req, res) => guard(res, async () => {
-      // No local scan: the model list comes from the RVC API every time, so a
-      // remote RVC host is always reflected.
-      json(res, 200, { ok: true, ...(await listModels(studio.store)) })
+      const url = new URL(req.url, 'http://localhost')
+      const force = url.searchParams.get('refresh') === '1' || url.searchParams.get('rescan') === '1'
+      let models
+      if (force) {
+        models = await studio.refreshModels({ force: true })
+      } else {
+        studio.warmModels()
+        models = studio.cachedModels()
+      }
+      json(res, 200, { ok: true, ...models })
     }),
   }))
 
@@ -974,3 +1045,4 @@ export default apply
 
 // hmr-probe 639290576986322043
 
+export { VoiceStudio }

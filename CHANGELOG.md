@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.5.0] - 2026-11-05
+
+### Added
+
+- **rvc-worker 集成**：独立的 RVC/MSST 执行器（Python 服务，默认 `0.0.0.0:7870`），
+  插件新增 `workerUrl` / `workerToken`；配置后模型列表、换声、分离都走 worker，
+  支持跨机器、任务队列与 SSE 进度、进程启停。没有 worker 时回退原来的 WebUI 直连。
+
+### Fixed
+
+- **设置页打开慢**：原先 `state()` 同步等待 RVC 探测（RVC 离线时 20~25 秒）。
+  现在模型清单走本地缓存（`rvc-cache.json`）+ 后台刷新，设置页打开立即渲染（实测 25ms），
+  远端超时压到 1.2s / 4s，失败也不再阻塞 UI。
+
 ## [0.4.0] - 2026-10-31
 
 ### Added

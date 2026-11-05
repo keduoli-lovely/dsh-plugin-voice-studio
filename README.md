@@ -65,8 +65,9 @@
 | IndexTTS 2.x WebUI | 本地语音合成（情绪向量） | `http://127.0.0.1:7860` | Gradio，调用 `gen_single` |
 | GPT-SoVITS `api_v2.py` | 本地语音合成 | `http://127.0.0.1:9880` | **9874 是 WebUI，没有 TTS API** |
 | MSST_WebUI | 人声/伴奏分离（可选） | 留空 | 不填则用分离服务 `server/rvc-api.py` |
-| RVC WebUI | 歌曲换声（模型/索引/推理） | `http://<IP>:7897` | 直接调用它的 Gradio `/run/*` 接口，**无需附加服务** |
-| RVC API（可选） | 仅用于人声分离 | `http://<IP>:7866` | 需要自动分离时启动 `server/rvc-api.py` |
+| RVC Worker（推荐） | 模型/换声/分离/进程控制 | `http://<IP>:7870` | 独立 Python 服务，跑在 RVC/MSST 机器上，慢任务不卡 DSH |
+| RVC WebUI（直连回退） | 歌曲换声 | `http://<IP>:7897` | 没有 worker 时直接调它的 Gradio `/run/*` 接口 |
+| RVC API（旧，可选） | 仅用于人声分离 | `http://<IP>:7866` | 兼容保留；新部署请用 rvc-worker |
 | qq-bridge | QQ 收发与语音发送 | 仓库目录 + 内置 3100 控制台 | 见 [QQ 发送](#qq-发送交给-qq-bridge) |
 
 ## 安装
@@ -167,62 +168,60 @@ GPT-SoVITS 与 RVC 没有情绪参数，结果里会如实标注「该提供商�
 
 流程：**给歌（本机路径）→ 分离 → RVC 换声（HTTP）→ 混音母带（本地）**。
 
-1. **给歌**：`song` 只接受**本机绝对路径**（如 `D:\music\song.wav`）。音乐目录匹配、链接下载、yt-dlp 已移除。
-2. **分离**：配置了 `msstUrl` 就先试 MSST_WebUI；否则用「分离服务地址」（`server/rvc-api.py` 的 `/separate`）。
-3. **换声**：插件**直接调用 RVC WebUI 的 Gradio 接口**，不需要额外进程：
-   - 模型列表：`POST /run/infer_refresh` → `data[0].choices`
-   - 索引：`POST /run/infer_change_voice`（顺带加载模型，返回自动匹配的索引路径）
-   - 转换：`POST /run/infer_convert`（音频以 base64 传入，结果以 `/file=<路径>` 下载）
+1. **给歌**：`song` 只接受**本机绝对路径**（如 `D:\music\song.wav`）。
+2. **分离**：优先 `rvc-worker`（`/v1/separate`，PyMSS/MSST）；其次 MSST_WebUI；再其次直连 RVC。
+3. **换声**：优先 `rvc-worker`（`/v1/convert`，模型热缓存）；没有 worker 时直接调 RVC WebUI 的
+   Gradio 接口（`infer_refresh` / `infer_change_voice` / `infer_convert`）。
 4. **混音**：本地纯 Node（`lib/wav.js`）按分离人声的 RMS 对齐后与伴奏相加、峰值 −1 dB；如果本机有 ffmpeg，
    再做 loudnorm（默认 `I=-11.5:TP=-1.0:LRA=11`）并输出 320 kbps MP3，没有就只出 WAV。
 
-**RVC 地址会自动识别**：同一条 URL 既可以是 WebUI，也可以是 `server/rvc-api.py`。
+### 推荐：rvc-worker（独立服务，跑在 RVC/MSST 机器上）
 
-### 为什么分离还需要一个小服务？
-
-RVC WebUI 的「分离」按钮对应的是 Gradio 的**流式生成器**（`pymss_separate`），而这一版 WebUI 关闭了
-Gradio 队列路由（`/queue/join` 返回 404），HTTP 调用只会拿到第一帧「正在加载模型」就结束，无法等待它跑完。
-换声/取模型这类一次性接口不受影响，所以插件的做法是：
-
-| 环节 | 走哪里 | 是否需要附加服务 |
-|---|---|---|
-| 模型列表 / 索引 / 换声 | RVC WebUI 的 `/run/*` | **不需要** |
-| 人声分离（PyMSS） | MSST_WebUI，或 `server/rvc-api.py` 的 `/separate` | 需要其中一个 |
-
-如果只想用一个地址、不跑任何附加服务：装 **MSST_WebUI** 并把地址填到 `msstUrl` 即可（插件优先用 MSST 分离）。
-
-### 可选的分离服务（server/rvc-api.py）
+RVC WebUI 是 Gradio 应用，分离是流式生成器且队列路由被关闭，HTTP 无法等待完成；
+`rvc-worker` 直接 import RVC 的 `VC` 类与 PyMSS，提供任务化 API（含 SSE 进度、进程控制），
+彻底摆脱 Gradio 的交互限制，也能跨机器部署。
 
 ```bash
-# 在 RVC 根目录运行（默认 7866，绑定 0.0.0.0）
-cd D:\path\to\RVC
-<插件目录>\server\start-rvc-api.bat 7866
-
-# 或直接命令
-runtime\python.exe <插件目录>\server\rvc-api.py --host 0.0.0.0 --port 7866 --rvc-root D:\path\to\RVC
+# RVC 机器上（默认 0.0.0.0:7870）
+runtime\python.exe rvc-worker\worker.py --port 7870 --token CHANGE_ME \
+  --rvc-root D:\path\to\RVC --msst-root D:\path\to\MSST_WebUI
 ```
-
-浏览器打开 `http://<RVC机器IP>:7866/` 应看到 `{"service":"dsh-voice-studio RVC API", ...}`。
 
 | 端点 | 用途 |
 |---|---|
-| `GET /` | 服务自述（确认不是 WebUI） |
-| `GET /health` | 存活与模型数量 |
-| `GET /models` | 模型/索引清单 |
-| `POST /convert` | multipart：`file` + `model/index/f0_method/f0_up_key/index_rate/rms_mix/protect` → WAV |
-| `POST /separate` | multipart：`file` → `{ vocal, instrumental }`（base64 WAV，PyMSS） |
+| `GET /v1/health` | RVC/MSST 可用性、GPU、任务与进程状态 |
+| `GET /v1/models` | 模型/索引清单 |
+| `POST /v1/files` / `GET /v1/files/{id}` | 上传/下载文件 |
+| `POST /v1/convert` | 干声换声 → WAV |
+| `POST /v1/separate` | 人声/伴奏分离（PyMSS） |
+| `POST /v1/jobs`、`GET /v1/jobs/{id}`、`/events` | 异步任务 + SSE 进度 |
+| `POST /v1/process/{rvc-webui|msst}/{start|stop|restart}` | 进程控制 |
+| `GET /v1/logs` | 子进程日志 |
 
-脚本会自动把 `TEMP/TMP/NUMBA_CACHE_DIR` 指到自己的临时目录（RVC 整合包的 `TEMP\` 常常不可写）。
+完整契约见 rvc-worker 仓库的 `API.md`。插件设置页填 `RVC Worker 地址` + `Worker Token` 即可，
+填了以后模型列表、换声、分离全部走 worker；没有 worker 时自动回退到 WebUI 直连。
+
+### 回退：直连 RVC WebUI
+
+`rvcUrl` 填 WebUI 地址（如 `http://192.168.1.10:7897`）也能换声：
+
+- 模型列表：`POST /run/infer_refresh` → `data[0].choices`
+- 索引：`POST /run/infer_change_voice`
+- 转换：`POST /run/infer_convert`（音频 base64 进，`/file=<路径>` 下载）
+
+但分离不行（见上），此时需要 `msstUrl` 或 `separateUrl`（兼容旧 `server/rvc-api.py`）。
 
 ### 参数（设置页 → 歌曲翻唱）
 
 | 字段 | 默认 | 说明 |
 |---|---|---|
-| `rvcUrl` | 空 | RVC WebUI 或 RVC API 地址，自动识别，例如 `http://192.168.1.10:7897` |
-| `separateUrl` | 空 | 可选：仅分离用的 RVC API 地址（`server/rvc-api.py`） |
-| `msstUrl` | 空 | 可选：MSST_WebUI 地址，优先用于分离 |
-| `model` | 第一个模型 | 模型 id（WebUI 模式下即 `xxx.pth`） |
-| `index` | 自动匹配 | 索引路径；WebUI 模式下留空会用 `infer_change_voice` 的结果 |
+| `workerUrl` | 空 | rvc-worker 地址，例如 `http://192.168.1.10:7870`；配置后优先使用 |
+| `workerToken` | 空 | 与 worker 的 `--token` 一致 |
+| `rvcUrl` | 空 | 没有 worker 时的直连地址（WebUI 或旧 RVC API） |
+| `separateUrl` | 空 | 可选：仅分离用的旧 RVC API 地址 |
+| `msstUrl` | 空 | 可选：MSST_WebUI 地址 |
+| `model` | 第一个模型 | 模型 id |
+| `index` | 自动匹配 | 索引路径；留空自动匹配 |
 | `f0Method` | `rmvpe` | `rmvpe` / `fcpe` / `pm` |
 | `f0UpKey` | `0` | 升降调（半音） |
 | `indexRate` | `0.75` | 索引混合比例 |
@@ -262,7 +261,8 @@ QQ ⟶ SnowLuma（OneBot v11 WS）⟶ qq-bridge ⟶ DSH Web API（agent 对话�
 
 ## 状态页
 
-- **只探测当前选择**：TTS 只测选中的提供商；翻唱测 RVC 地址（自动区分 WebUI / RVC API）；MSST 填了才测；QQ 启用才测 qq-bridge。
+- **只探测当前选择**：TTS 只测选中的提供商；翻唱测 RVC Worker / RVC 地址（自动区分 WebUI / API）；MSST 填了才测；QQ 启用才测 qq-bridge。
+- **打开即渲染**：模型清单走本地缓存（`~/.dsh-voice-studio/rvc-cache.json`），刷新在后台进行，RVC 离线也不会卡住设置页。
 - **服务签名校验**：`/config` 必须包含 `gen_single`（IndexTTS）或 `run_inference_single`（MSST），避免两个服务共用 7860 时误报 OK。
 - **DSH 端口**：显示 `http://127.0.0.1:<port>`、qq-bridge 配置的 `dsh.baseUrl` 与一致性；不一致时可一键同步（写 `dsh.baseUrl`，重启 qq-bridge 生效）。
 - 完整清单：`POST /tts-studio/api/probe?all=1`。
@@ -359,7 +359,7 @@ npm pack            # 产出安装包
 | 本地 TTS 报 `fetch failed` | 服务没开或地址错 | 启动 IndexTTS / GPT-SoVITS `api_v2.py`，检查端口 |
 | 旧版 `plugin_manager` 保存设置后音色库清空 | patch 合并重置了数组 | 本仓库已修复（深合并） |
 | 翻唱只出 WAV 没有 MP3 | 本机 ffmpeg 不在 PATH | 在设置页填 `ffmpegPath`，或把 ffmpeg 加入 PATH |
-| 翻唱报「无法等待分离完成」 | RVC WebUI 的分离是流式生成器 | 配置 `msstUrl`（MSST_WebUI）或 `separateUrl`（`server/rvc-api.py`） |
+| 翻唱报「无法等待分离完成」 | RVC WebUI 的分离是流式生成器 | 用 `rvc-worker`（推荐），或配置 `msstUrl` / `separateUrl` |
 | QQ 里说「语音库是空的」 | 模型先查了 `qq_list_voices` | 已在系统提示词中要求直接调用 `voice_generate` |
 | `qq_send_voice` 不存在 | bridge 语音开关关闭 / 未重启 | 设置页打开开关并重启 qq-bridge |
 | bridge 日志「事件流 0 帧」 | `dsh.baseUrl` 是上一次的端口 | 状态页一键同步 + 重启 qq-bridge |
@@ -368,7 +368,7 @@ npm pack            # 产出安装包
 
 - 语音/视频**接收**仍为占位文本（桥接侧限制），本插件只负责「发出」。
 - IndexTTS 与 MSST 默认都想用 7860，必须错开端口。
-- RVC WebUI 的分离接口是流式生成器（Gradio 队列被关闭），插件无法程序化等待；自动分离需要 MSST 或 `server/rvc-api.py`。
+- 不装 rvc-worker 时，RVC WebUI 的分离接口无法程序化等待，只能走 MSST 或旧 `server/rvc-api.py`；跨机全自动推荐 worker。
 - 跨机器访问时 WebUI 需以 `--listen` 打开，并放行对应端口。
 - qq-bridge 的 preset 白名单是对方项目文件，升级/重跑 `setup-dsh.mjs` 后可能需要重新加入四个工具名。
 
