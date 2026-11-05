@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.5.2] - 2026-11-05
+
+### Fixed
+
+- 只配置 `rvc-worker`（不填 `rvcUrl`）时翻唱会误报「未配置 RVC API 地址」；现在 worker 优先，
+  没有 worker 才要求直连地址。
+
 ## [0.5.1] - 2026-11-05
 
 ### Added

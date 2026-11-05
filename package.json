@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-voice-studio",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "语音工坊：多提供商语音合成 + 参考音色库 + RVC 歌曲翻唱 + 情绪控制 + qq-bridge 语音发送（含随机语音回复）。Voice studio for DeepSeek Harness.",
   "type": "module",
   "main": "index.js",
