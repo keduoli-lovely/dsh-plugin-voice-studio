@@ -201,6 +201,9 @@ runtime\python.exe rvc-worker\worker.py --port 7870 --token CHANGE_ME \
 完整契约见 rvc-worker 仓库的 `API.md`。插件设置页填 `RVC Worker 地址` + `Worker Token` 即可，
 填了以后模型列表、换声、分离全部走 worker；没有 worker 时自动回退到 WebUI 直连。
 
+设置页还提供 **「Worker 进程」面板**：检查进程、启动/重启/停止 RVC WebUI 与 MSST_WebUI
+（对应 worker 的 `/v1/process/*`，DSH 侧经 `/tts-studio/api/worker/process` 代理）。
+
 ### 回退：直连 RVC WebUI
 
 `rvcUrl` 填 WebUI 地址（如 `http://192.168.1.10:7897`）也能换声：

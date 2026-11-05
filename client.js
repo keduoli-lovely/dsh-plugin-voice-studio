@@ -921,6 +921,29 @@
                 h('div', { className: 'vs-actions' }, h(Button, { onClick: rescanModels, disabled: busy === 'models' }, T.coverRescan)),
                 models.error ? h(Notice, { kind: 'error' }, String(models.error)) : null,
               ),
+              h(Group, { title: 'Worker 进程', hint: '由 rvc-worker 管理 RVC WebUI / MSST_WebUI；配置 Worker 地址后可用' },
+                workerProc
+                  ? h('div', { className: 'vs-kv' },
+                    h('span', null, 'RVC WebUI'),
+                    h('span', null, workerProc.rvcWebui && workerProc.rvcWebui.running
+                      ? '运行中 :' + (workerProc.rvcWebui.port || '') + '（pid ' + (workerProc.rvcWebui.pid || '?') + '）'
+                      : '已停止'),
+                    h('span', null, 'MSST_WebUI'),
+                    h('span', null, workerProc.msst && workerProc.msst.running
+                      ? '运行中 :' + (workerProc.msst.port || '') + '（pid ' + (workerProc.msst.pid || '?') + '）'
+                      : '已停止'),
+                  )
+                  : h('p', { className: 'vs-muted' }, workerMsg || '点击「检查进程」读取 worker 状态'),
+                h('div', { className: 'vs-actions' },
+                  h(Button, { onClick: loadWorkerProc, disabled: Boolean(workerBusy) }, workerBusy === 'load' ? '读取中…' : '检查进程'),
+                  h(Button, { onClick: function () { workerAction('rvc-webui', 'start') }, disabled: Boolean(workerBusy) }, '启动 RVC'),
+                  h(Button, { onClick: function () { workerAction('rvc-webui', 'restart') }, disabled: Boolean(workerBusy) }, '重启 RVC'),
+                  h(Button, { onClick: function () { workerAction('rvc-webui', 'stop') }, disabled: Boolean(workerBusy) }, '停止 RVC'),
+                  h(Button, { onClick: function () { workerAction('msst', 'start') }, disabled: Boolean(workerBusy) }, '启动 MSST'),
+                  h(Button, { onClick: function () { workerAction('msst', 'stop') }, disabled: Boolean(workerBusy) }, '停止 MSST'),
+                ),
+                workerMsg ? h('p', { className: 'vs-muted' }, workerMsg) : null,
+              ),
               h(Group, { title: T.coverStart },
                 h(Input, { value: songInput, placeholder: 'D:\\music\\song.wav（本机绝对路径）', onChange: function (e) { setSongInput(e.target.value) } }),
                 h('div', { className: 'vs-actions' },

@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/lang/zh-CN/).
 
+## [0.5.1] - 2026-11-05
+
+### Added
+
+- 设置页「Worker 进程」面板：检查 rvc-worker 进程、启动/重启/停止 RVC WebUI 与 MSST_WebUI。
+- 新增宿主路由 `GET/POST /tts-studio/api/worker/process`（代理 worker 的 `/v1/process*`）。
+
 ## [0.5.0] - 2026-11-05
 
 ### Added

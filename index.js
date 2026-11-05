@@ -17,7 +17,7 @@ import { basename, join, normalize as normalizePath } from 'node:path'
 
 import { listModels, makeCover } from './lib/cover.js'
 import { rvcHealth } from './lib/rvc.js'
-import { workerHealth } from './lib/worker.js'
+import { workerHealth, workerProcessAction, workerProcesses } from './lib/worker.js'
 import { describeEmotion, resolveEmotion } from './lib/emotion.js'
 import { bridgeLinkInfo, bridgeVoiceInfo, enableBridgeVoice, qqStatus, sendToQq, setBridgeDshUrl } from './lib/qq.js'
 import { Store } from './lib/store.js'
@@ -681,6 +681,30 @@ function registerRoutes(studio, webServer) {
         if (!origin) throw new Error('无法确定当前 DSH 地址')
         const result = setBridgeDshUrl(studio.store, origin)
         json(res, 200, { ok: true, ...result, origin, bridge: bridgeLinkInfo(studio.store) })
+      })
+    },
+  }))
+
+  disposers.push(webServer.register({
+    kind: 'exact',
+    path: `${BASE}/api/worker/process`,
+    handler: (req, res) => {
+      guard(res, async () => {
+        if ((req.method || '').toUpperCase() === 'POST') {
+          const body = await readJson(req, 256 * 1024)
+          const name = String(body?.name || '').trim()
+          const action = String(body?.action || '').trim()
+          if (!['rvc-webui', 'msst'].includes(name) || !['start', 'stop', 'restart'].includes(action)) {
+            json(res, 400, { error: '参数不合法：name 必须是 rvc-webui/msst，action 必须是 start/stop/restart' })
+            return
+          }
+          const payload = {}
+          if (body?.port !== undefined && body?.port !== null && body?.port !== '') payload.port = Number(body.port)
+          const result = await workerProcessAction(studio.store, name, action, payload)
+          json(res, 200, { ok: true, result })
+          return
+        }
+        json(res, 200, { ok: true, ...(await workerProcesses(studio.store)) })
       })
     },
   }))
